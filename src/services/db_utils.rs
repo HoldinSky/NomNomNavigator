@@ -1,6 +1,7 @@
 use actix::{Actor, Addr, SyncContext};
-use diesel::{PgConnection};
+use diesel::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
+
 use crate::types::PoolInitializationError;
 
 pub struct DbActor(pub Pool<ConnectionManager<PgConnection>>);

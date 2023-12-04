@@ -1,0 +1,6 @@
+/target
+/migrations
+*.xml
+*.iml
+.env
+.idea
