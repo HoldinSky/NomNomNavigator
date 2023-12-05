@@ -4,13 +4,14 @@ use diesel::r2d2::{ConnectionManager, Pool};
 
 use crate::types::PoolInitializationError;
 
-pub struct DbActor(pub Pool<ConnectionManager<PgConnection>>);
+pub struct PgActor(pub Pool<ConnectionManager<PgConnection>>);
 
 pub struct AppState {
-    pub db: Addr<DbActor>
+    pub pg_db: Addr<PgActor>,
+    pub redis_db: redis::Client
 }
 
-impl Actor for DbActor {
+impl Actor for PgActor {
     type Context = SyncContext<Self>;
 }
 

@@ -1,13 +1,38 @@
 // @generated automatically by Diesel CLI.
 
-pub mod sql_types {
-    #[derive(diesel::query_builder::QueryId, diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "dish_type"))]
-    pub struct DishType;
+diesel::table! {
+    dish_to_order (id) {
+        id -> Int8,
+        dish_id -> Int8,
+        order_id -> Int8,
+        count -> Int4,
+    }
 }
 
 diesel::table! {
-    client_order (id) {
+    dish_to_product (id) {
+        id -> Int8,
+        dish_id -> Int8,
+        product_id -> Int8,
+        weight_g -> Int4,
+    }
+}
+
+diesel::table! {
+    dishes (id) {
+        id -> Int8,
+        #[max_length = 255]
+        name -> Varchar,
+        #[sql_name = "type"]
+        type_ -> Text,
+        portion_weight_g -> Int4,
+        cost -> Int4,
+        approx_cook_time -> Int4,
+    }
+}
+
+diesel::table! {
+    orders (id) {
         id -> Int8,
         table_id -> Nullable<Int8>,
         total_cost -> Int4,
@@ -15,31 +40,16 @@ diesel::table! {
 }
 
 diesel::table! {
-    use diesel::sql_types::*;
-    use super::sql_types::DishType;
-
-    dish (id) {
+    products (id) {
         id -> Int8,
-        #[max_length = 255]
+        #[max_length = 30]
         name -> Varchar,
-        #[sql_name = "type"]
-        type_ -> DishType,
-        portion_weight -> Int4,
-        cost -> Int4,
-        approx_cook_time -> Timestamp,
+        in_stock_g -> Int4,
     }
 }
 
 diesel::table! {
-    dish_to_order (id) {
-        id -> Int8,
-        dish_id -> Nullable<Int8>,
-        order_id -> Nullable<Int8>,
-    }
-}
-
-diesel::table! {
-    restaurant_table (id) {
+    tables (id) {
         id -> Int8,
         seat_count -> Int4,
         is_occupied -> Bool,
@@ -51,7 +61,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    waiter (id) {
+    waiters (id) {
         id -> Int8,
         #[max_length = 40]
         first_name -> Varchar,
@@ -61,15 +71,19 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(client_order -> restaurant_table (table_id));
-diesel::joinable!(dish_to_order -> client_order (order_id));
-diesel::joinable!(dish_to_order -> dish (dish_id));
-diesel::joinable!(restaurant_table -> waiter (waiter_id));
+diesel::joinable!(dish_to_order -> dishes (dish_id));
+diesel::joinable!(dish_to_order -> orders (order_id));
+diesel::joinable!(dish_to_product -> dishes (dish_id));
+diesel::joinable!(dish_to_product -> products (product_id));
+diesel::joinable!(orders -> tables (table_id));
+diesel::joinable!(tables -> waiters (waiter_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    client_order,
-    dish,
     dish_to_order,
-    restaurant_table,
-    waiter,
+    dish_to_product,
+    dishes,
+    orders,
+    products,
+    tables,
+    waiters,
 );
