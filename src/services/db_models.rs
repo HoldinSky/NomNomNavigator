@@ -8,7 +8,7 @@ use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Text, Timestamp};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::schema::dishes::dsl::dishes;
 use crate::types::DishType;
 
@@ -17,6 +17,7 @@ pub struct DishToOrder {
     pub id: i64,
     pub dish_id: i64,
     pub order_id: i64,
+    pub dish_price: i32,
     pub count: i32,
 }
 
@@ -28,20 +29,20 @@ pub struct DishToProduct {
     pub weight_g: i32,
 }
 
-#[derive(Queryable, Debug, Serialize)]
+#[derive(Queryable, Debug, Serialize, Deserialize, Clone)]
 pub struct Dish {
     pub id: i64,
     pub name: String,
     pub type_: DishType,
     pub portion_weight_g: i32,
-    pub cost: i32,
-    pub approx_cook_time: i32,
+    pub price: i32,
+    pub approx_cook_time_s: i32,
 }
 
 #[derive(Queryable, Debug, Serialize)]
 pub struct Order {
     pub id: i64,
-    pub table_id: Option<i64>,
+    pub table_id: i64,
     pub total_cost: i32,
 }
 

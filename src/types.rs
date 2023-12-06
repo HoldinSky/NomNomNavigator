@@ -7,14 +7,19 @@ use diesel::result::Error;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use serde::ser::StdError;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-// actual types
+// Constants
+
+pub const MENU_KEY: &str = "menu";
+
+// actual User Defined Types
 
 #[derive(Debug)]
 pub struct PoolInitializationError(pub String);
 
-#[derive(Debug, Clone, FromSqlRow, AsExpression, Serialize)]
+#[derive(FromSqlRow, AsExpression, Serialize, Deserialize,)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[diesel(sql_type = Text)]
 pub enum DishType {
     Main,

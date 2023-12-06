@@ -5,6 +5,7 @@ diesel::table! {
         id -> Int8,
         dish_id -> Int8,
         order_id -> Int8,
+        dish_price -> Int4,
         count -> Int4,
     }
 }
@@ -26,15 +27,15 @@ diesel::table! {
         #[sql_name = "type"]
         type_ -> Text,
         portion_weight_g -> Int4,
-        cost -> Int4,
-        approx_cook_time -> Int4,
+        price -> Int4,
+        approx_cook_time_s -> Int4,
     }
 }
 
 diesel::table! {
     orders (id) {
         id -> Int8,
-        table_id -> Nullable<Int8>,
+        table_id -> Int8,
         total_cost -> Int4,
     }
 }
@@ -42,7 +43,7 @@ diesel::table! {
 diesel::table! {
     products (id) {
         id -> Int8,
-        #[max_length = 30]
+        #[max_length = 50]
         name -> Varchar,
         in_stock_g -> Int4,
     }

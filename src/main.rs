@@ -24,13 +24,6 @@ fn init_pg_db() -> Addr<PgActor> {
     SyncArbiter::start(5, move || PgActor(pool.clone()))
 }
 
-async fn init_mongo_db() -> mongodb::Client {
-    let db_uri = env::var("MONGO_DATABASE_URI").expect("MONGO_DATABASE_URI must be set");
-
-    mongodb::Client::with_uri_str(db_uri.clone()).await
-        .expect(&format!("Couldn't establish connection with MongoDb by url: {}", db_uri))
-}
-
 fn init_redis_db() -> redis::Client {
     let db_uri = env::var("REDIS_DATABASE_URI").expect("REDIS_DATABASE_URI must be set");
 
@@ -49,13 +42,25 @@ async fn main() -> std::io::Result<()> {
             .service(services::home_page)
             .service(
                 web::scope("/waiters")
-                    .service(services::scope_waiters::fetch_waiters)
-                    .service(services::scope_waiters::add_waiter)
+                    .service(services::waiters_route::fetch_waiters)
+                    .service(services::waiters_route::add_waiter)
+            )
+            .service(
+                web::scope("/menu")
+                    .service(services::menu_route::view_menu)
+                    .service(services::menu_route::get_dish)
+            )
+            .service(
+                web::scope("/order")
+                    .service(services::order_route::order_dish)
+                    .service(services::order_route::add_dish_to_order)
+                    .service(services::order_route::decrement_dishes_from_order)
+                    .service(services::order_route::delete_dish_from_order)
             )
             .service(
                 web::scope("/test")
-                    .service(services::scope_test::healthcheck)
-                    .service(services::scope_test::create_mock_menu)
+                    .service(services::test_route::healthcheck)
+                    .service(services::test_route::create_mock_menu)
             )
     })
         .bind("127.0.0.1:8080")?
