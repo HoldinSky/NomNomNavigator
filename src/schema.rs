@@ -37,6 +37,8 @@ diesel::table! {
         id -> Int8,
         table_id -> Int8,
         total_cost -> Int4,
+        is_confirmed -> Bool,
+        is_paid -> Bool
     }
 }
 
@@ -46,6 +48,14 @@ diesel::table! {
         #[max_length = 50]
         name -> Varchar,
         in_stock_g -> Int4,
+    }
+}
+
+diesel::table! {
+    stats (id) {
+        id -> Int8,
+        day -> Date,
+        income -> Int4,
     }
 }
 
@@ -85,6 +95,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     dishes,
     orders,
     products,
+    stats,
     tables,
     waiters,
 );

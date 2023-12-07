@@ -56,6 +56,8 @@ async fn main() -> std::io::Result<()> {
                     .service(services::order_route::add_dish_to_order)
                     .service(services::order_route::decrement_dishes_from_order)
                     .service(services::order_route::delete_dish_from_order)
+                    .service(services::order_route::confirm_order)
+                    .service(services::order_route::pay_for_order)
             )
             .service(
                 web::scope("/test")

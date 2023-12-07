@@ -92,8 +92,9 @@ pub mod menu_route {
 pub mod order_route {
     use actix_web::{delete, HttpResponse, post, put, Responder};
     use actix_web::web::{Data, Path};
+    use serde::de::IntoDeserializer;
     use crate::services::db_utils::AppState;
-    use crate::services::messages::{FirstDish, FetchDish, AddDishToOrder, DecrementDishInOrder, DeleteDishFromOrder};
+    use crate::services::messages::{FirstDish, FetchDish, AddDishToOrder, DecrementDishInOrder, DeleteDishFromOrder, ConfirmOrder, PayForOrder};
 
     #[post("/{table_id}/{dish_id}/first-dish")]
     pub async fn order_dish(state: Data<AppState>, path: Path<(i64, i64)>) -> impl Responder {
@@ -143,6 +144,30 @@ pub mod order_route {
         match db.send(DeleteDishFromOrder { order_id, dish_id }).await {
             Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Order id: {}", resp)),
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order or dish were not found: {err}")),
+            Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+        }
+    }
+
+    #[post("/confirm/{id}")]
+    pub async fn confirm_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let db = state.pg_db.clone();
+        let id = path.into_inner();
+
+        match db.send(ConfirmOrder(id)).await {
+            Ok(Ok(_)) => HttpResponse::Ok().json(format!("Order with id {id} is successfully confirmed")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order not found: {err}")),
+            Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+        }
+    }
+
+    #[post("/pay/{id}")]
+    pub async fn pay_for_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let db = state.pg_db.clone();
+        let id = path.into_inner();
+
+        match db.send(PayForOrder(id)).await {
+            Ok(Ok(_)) => HttpResponse::Ok().json(format!("Order with id {id} is successfully paid")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
     }

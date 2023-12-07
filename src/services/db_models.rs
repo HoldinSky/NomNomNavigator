@@ -1,15 +1,12 @@
 #![allow(unused)]
 #![allow(clippy::all)]
 
-use std::fmt::{Debug, Formatter};
-use chrono::{DateTime, serde::ts_seconds_option, Utc};
-use diesel::{AsExpression, FromSqlRow, Queryable, Selectable};
-use diesel::deserialize::FromSql;
-use diesel::pg::Pg;
-use diesel::serialize::{Output, ToSql};
-use diesel::sql_types::{Text, Timestamp};
+use std::fmt::Debug;
+
+use chrono::{DateTime, NaiveDate, serde::ts_seconds_option, Utc};
+use diesel::{Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use crate::schema::dishes::dsl::dishes;
+
 use crate::types::DishType;
 
 #[derive(Queryable, Debug, Serialize)]
@@ -44,6 +41,8 @@ pub struct Order {
     pub id: i64,
     pub table_id: i64,
     pub total_cost: i32,
+    pub is_confirmed: bool,
+    pub is_paid: bool
 }
 
 #[derive(Queryable, Debug, Serialize)]
@@ -70,4 +69,11 @@ pub struct Waiter {
     pub first_name: String,
     pub last_name: String,
     pub is_admin: bool,
+}
+
+#[derive(Queryable, Debug, Serialize)]
+pub struct Stats {
+    pub id: i64,
+    pub day: NaiveDate,
+    pub income: i32,
 }

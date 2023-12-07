@@ -56,3 +56,11 @@ pub struct DeleteDishFromOrder {
     pub order_id: i64,
     pub dish_id: i64
 }
+
+#[derive(Message)]
+#[rtype(result = "QueryResult<()>")]
+pub struct ConfirmOrder(pub i64);
+
+#[derive(Message)]
+#[rtype(result = "QueryResult<()>")]
+pub struct PayForOrder(pub i64);
