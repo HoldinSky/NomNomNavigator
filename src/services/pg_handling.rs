@@ -236,8 +236,11 @@ impl Handler<ConfirmOrder> for PgActor {
     type Result = QueryResult<()>;
 
     fn handle(&mut self, msg: ConfirmOrder, _ctx: &mut Self::Context) -> Self::Result {
-        use crate::schema::orders::{dsl::orders, is_confirmed};
-        use crate::services::db_models::Order;
+        use crate::schema::orders::{dsl::orders, id as ord_pk, is_confirmed};
+        use crate::schema::dish_to_order::{dsl::dish_to_order, dish_id as dto_dish_id, order_id, count};
+        use crate::schema::dish_to_product::{dsl::dish_to_product, dish_id as dtp_dish_id, product_id, weight_g};
+        use crate::schema::products::{dsl::products, id as prod_pk, in_stock_g};
+        use std::collections::HashMap;
 
         let mut conn = establish_connection(&self.0)?;
 
@@ -245,6 +248,24 @@ impl Handler<ConfirmOrder> for PgActor {
             Ok(val) => if val { return Err(get_db_err("The order is already confirmed")); },
             Err(err) => return Err(err)
         };
+
+        let ordered_dishes = orders.find(msg.0)
+            .inner_join(dish_to_order).filter(ord_pk.eq(order_id))
+            .select((dto_dish_id, count)).get_results::<(i64, i32)>(&mut conn)?;
+
+        let mut products_to_weight: HashMap<i64, i32> = HashMap::new();
+        for (id, dish_count) in ordered_dishes {
+            dish_to_product.filter(dtp_dish_id.eq(id))
+                .select((product_id, weight_g)).get_results::<(i64, i32)>(&mut conn)?
+                .iter().for_each(|(p_id, weight)| {
+                let already_used = products_to_weight.entry(p_id.clone()).or_insert(0);
+                *already_used += weight * dish_count;
+            });
+        }
+
+        for (p_id, weight_used) in products_to_weight {
+            diesel::update(products.find(p_id)).set(in_stock_g.eq(in_stock_g - weight_used)).execute(&mut conn);
+        }
 
         diesel::update(orders.find(msg.0)).set(is_confirmed.eq(true)).execute(&mut conn)?;
 
