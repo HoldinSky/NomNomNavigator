@@ -31,10 +31,7 @@ pub struct FetchDishIngredients(pub i64);
 /// returns id of newly created order
 #[derive(Message)]
 #[rtype(result = "QueryResult<i64>")]
-pub struct FirstDish {
-    pub table_id: i64,
-    pub dish_id: i64
-}
+pub struct CreateOrder(pub i64);
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<i64>")]

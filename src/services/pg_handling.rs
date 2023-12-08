@@ -7,13 +7,22 @@ use diesel::{
     result::{DatabaseErrorKind, Error},
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
+use diesel::connection::SimpleConnection;
 
 use crate::services::db_models::{Waiter, Dish};
 use crate::services::db_utils::PgActor;
 use crate::services::messages::{
-    AddWaiter, FetchWaiters,
-    FetchDish, FetchDishes, FetchDishIngredients, FirstDish, AddDishToOrder,
-    DecrementDishInOrder, DeleteDishFromOrder, ConfirmOrder, PayForOrder,
+    AddWaiter,
+    FetchWaiters,
+    FetchDish,
+    FetchDishes,
+    FetchDishIngredients,
+    AddDishToOrder,
+    DecrementDishInOrder,
+    DeleteDishFromOrder,
+    ConfirmOrder,
+    PayForOrder,
+    CreateOrder,
 };
 
 fn establish_connection(pool: &Pool<ConnectionManager<PgConnection>>) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
@@ -120,32 +129,20 @@ impl Handler<FetchDishIngredients> for PgActor {
     }
 }
 
-impl Handler<FirstDish> for PgActor {
+impl Handler<CreateOrder> for PgActor {
     type Result = QueryResult<i64>;
 
-    fn handle(&mut self, msg: FirstDish, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: CreateOrder, _ctx: &mut Self::Context) -> Self::Result {
         use crate::schema::dish_to_order::dsl::dish_to_order;
         use crate::schema::orders::{dsl::orders, id};
         use crate::services::insertable::{OrderDish, NewOrder};
 
         let mut conn = establish_connection(&self.0)?;
 
-        let order_id = diesel::insert_into(orders)
-            .values(NewOrder { table_id: msg.table_id, total_cost: 0 })
+        diesel::insert_into(orders)
+            .values(NewOrder { table_id: msg.0, total_cost: 0 })
             .returning(id)
-            .get_result::<i64>(&mut conn)?;
-
-        let dish_price = get_dish_price(&mut conn, msg.dish_id)?;
-
-        diesel::insert_into(dish_to_order)
-            .values(OrderDish {
-                dish_id: msg.dish_id,
-                count: 1,
-                order_id,
-                dish_price,
-            }).execute(&mut conn)?;
-
-        Ok(order_id)
+            .get_result::<i64>(&mut conn)
     }
 }
 

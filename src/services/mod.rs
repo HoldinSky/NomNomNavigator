@@ -94,17 +94,17 @@ pub mod order_route {
     use actix_web::web::{Data, Path};
     use serde::de::IntoDeserializer;
     use crate::services::db_utils::AppState;
-    use crate::services::messages::{FirstDish, FetchDish, AddDishToOrder, DecrementDishInOrder, DeleteDishFromOrder, ConfirmOrder, PayForOrder};
+    use crate::services::messages::{FetchDish, AddDishToOrder, DecrementDishInOrder, DeleteDishFromOrder, ConfirmOrder, PayForOrder, CreateOrder};
 
-    #[post("/{table_id}/{dish_id}/first-dish")]
-    pub async fn order_dish(state: Data<AppState>, path: Path<(i64, i64)>) -> impl Responder {
+    #[post("/create/{table_id}")]
+    pub async fn create_blank_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
         let db = state.pg_db.clone();
 
-        let (table_id, dish_id) = path.into_inner();
+        let table_id = path.into_inner();
 
-        match db.send(FirstDish { table_id, dish_id }).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Order id: {}", resp)),
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Table or order was not found: {err}")),
+        match db.send(CreateOrder(table_id)).await {
+            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Id of newly created order: {}", resp)),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Table was not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
     }
