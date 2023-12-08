@@ -14,7 +14,7 @@ struct RedisDish {
     ingredients: Vec<(String, i32)>,
 }
 
-pub async fn put_menu_to_db(pg_db: Addr<PgActor>, redis_db: &redis::Client, dishes: &mut Vec<Dish>) -> Result<String, String> {
+pub async fn put_menu_to_db(pg_db: Addr<PgActor>, redis_db: &redis::Client, mut dishes: Vec<Dish>) -> Result<String, String> {
     let mut unique_dish_types = HashSet::new();
     dishes.retain(|dish| unique_dish_types.insert(dish.type_.clone()));
 

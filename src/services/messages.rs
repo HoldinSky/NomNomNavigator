@@ -25,6 +25,10 @@ pub struct FetchDish(pub i64);
 pub struct FetchDishes;
 
 #[derive(Message)]
+#[rtype(result = "QueryResult<Vec<Dish>>")]
+pub struct FetchSpecificDishes(pub Vec<i64>);
+
+#[derive(Message)]
 #[rtype(result = "QueryResult<Vec<(String, i32)>>")]
 pub struct FetchDishIngredients(pub i64);
 

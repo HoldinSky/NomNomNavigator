@@ -1,5 +1,6 @@
 use actix::Handler;
 use diesel::{
+    EqAll,
     Insertable,
     PgConnection,
     ExpressionMethods,
@@ -8,6 +9,7 @@ use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
 use diesel::connection::SimpleConnection;
+use diesel::expression::AsExpression;
 
 use crate::services::db_models::{Waiter, Dish};
 use crate::services::db_utils::PgActor;
@@ -16,6 +18,7 @@ use crate::services::messages::{
     FetchWaiters,
     FetchDish,
     FetchDishes,
+    FetchSpecificDishes,
     FetchDishIngredients,
     AddDishToOrder,
     DecrementDishInOrder,
@@ -34,7 +37,7 @@ fn establish_connection(pool: &Pool<ConnectionManager<PgConnection>>) -> Result<
 
 fn connection_err() -> Error { Error::DatabaseError(DatabaseErrorKind::ClosedConnection, Box::new("Failed to establish connection".to_owned())) }
 
-fn get_dish_price(mut conn: &mut PooledConnection<ConnectionManager<PgConnection>>, dish_id: i64) -> Result<i32, Error> {
+fn get_dish_price(mut conn: &mut PgConnection, dish_id: i64) -> Result<i32, Error> {
     use crate::schema::dishes::dsl::dishes;
     use crate::schema::dishes::price;
 
@@ -113,6 +116,18 @@ impl Handler<FetchDishes> for PgActor {
     }
 }
 
+impl Handler<FetchSpecificDishes> for PgActor {
+    type Result = QueryResult<Vec<Dish>>;
+
+    fn handle(&mut self, msg: FetchSpecificDishes, _ctx: &mut Self::Context) -> Self::Result {
+        use crate::schema::dishes::{dsl::dishes, id};
+
+        let mut conn = establish_connection(&self.0)?;
+
+        dishes.filter(id.eq_any(msg.0)).get_results(&mut conn)
+    }
+}
+
 impl Handler<FetchDishIngredients> for PgActor {
     type Result = QueryResult<Vec<(String, i32)>>;
 
@@ -169,17 +184,19 @@ impl Handler<AddDishToOrder> for PgActor {
             return Ok(msg.order_id);
         };
 
-        let dish_price = get_dish_price(&mut conn, msg.dish_id)?;
+        conn.build_transaction().run(|trx_conn| {
+            let dish_price = get_dish_price(trx_conn, msg.dish_id)?;
 
-        diesel::insert_into(dish_to_order)
-            .values(OrderDish {
-                dish_id: msg.dish_id,
-                order_id: msg.order_id,
-                count: 1,
-                dish_price,
-            }).execute(&mut conn)?;
+            diesel::insert_into(dish_to_order)
+                .values(OrderDish {
+                    dish_id: msg.dish_id,
+                    order_id: msg.order_id,
+                    count: 1,
+                    dish_price,
+                }).execute(trx_conn)?;
 
-        Ok(msg.order_id)
+            Ok(msg.order_id)
+        })
     }
 }
 
@@ -197,17 +214,19 @@ impl Handler<DecrementDishInOrder> for PgActor {
             Err(err) => return Err(err)
         };
 
-        let (mapping_id, dish_count) = dish_to_order.select((id, count))
-            .filter(order_id.eq(msg.order_id))
-            .filter(dish_id.eq(msg.dish_id)).first::<(i64, i32)>(&mut conn)?;
+        conn.build_transaction().run(|trx_conn| {
+            let (mapping_id, dish_count) = dish_to_order.select((id, count))
+                .filter(order_id.eq(msg.order_id))
+                .filter(dish_id.eq(msg.dish_id)).first::<(i64, i32)>(trx_conn)?;
 
-        if dish_count == 1 {
-            diesel::delete(dish_to_order.find(mapping_id)).execute(&mut conn);
-        } else {
-            diesel::update(dish_to_order.find(mapping_id)).set(count.eq(dish_count - 1)).execute(&mut conn);
-        }
+            if dish_count == 1 {
+                diesel::delete(dish_to_order.find(mapping_id)).execute(trx_conn);
+            } else {
+                diesel::update(dish_to_order.find(mapping_id)).set(count.eq(dish_count - 1)).execute(trx_conn);
+            }
 
-        Ok(msg.order_id)
+            Ok(msg.order_id)
+        })
     }
 }
 
@@ -221,14 +240,16 @@ impl Handler<DeleteDishFromOrder> for PgActor {
 
         let mut conn = establish_connection(&self.0)?;
 
-        match orders.find(msg.order_id).select(is_confirmed).first::<bool>(&mut conn) {
-            Ok(val) => if val { return Err(get_db_err("The order is already confirmed")); },
-            Err(err) => return Err(err)
-        };
+        conn.build_transaction().run(|trx_conn| {
+            match orders.find(msg.order_id).select(is_confirmed).first::<bool>(trx_conn) {
+                Ok(val) => if val { return Err(get_db_err("The order is already confirmed")); },
+                Err(err) => return Err(err)
+            };
 
-        diesel::delete(dish_to_order.filter(dish_id.eq(msg.dish_id)).filter(order_id.eq(msg.order_id))).execute(&mut conn)?;
+            diesel::delete(dish_to_order.filter(dish_id.eq(msg.dish_id)).filter(order_id.eq(msg.order_id))).execute(trx_conn)?;
 
-        Ok(msg.order_id)
+            Ok(msg.order_id)
+        })
     }
 }
 
@@ -253,23 +274,28 @@ impl Handler<ConfirmOrder> for PgActor {
             .inner_join(dish_to_order).filter(ord_pk.eq(order_id))
             .select((dto_dish_id, count)).get_results::<(i64, i32)>(&mut conn)?;
 
+        let mut dishes_to_count = HashMap::new();
         let mut products_to_weight: HashMap<i64, i32> = HashMap::new();
-        for (id, dish_count) in ordered_dishes {
-            dish_to_product.filter(dtp_dish_id.eq(id))
-                .select((product_id, weight_g)).get_results::<(i64, i32)>(&mut conn)?
-                .iter().for_each(|(p_id, weight)| {
-                let already_used = products_to_weight.entry(p_id.clone()).or_insert(0);
-                *already_used += weight * dish_count;
-            });
-        }
 
-        for (p_id, weight_used) in products_to_weight {
-            diesel::update(products.find(p_id)).set(in_stock_g.eq(in_stock_g - weight_used)).execute(&mut conn);
-        }
+        for (id, dish_count) in ordered_dishes { dishes_to_count.insert(id, dish_count); }
 
-        diesel::update(orders.find(msg.0)).set(is_confirmed.eq(true)).execute(&mut conn)?;
+        conn.build_transaction().run(|trx_conn| {
+            let dish_to_products_usage = dish_to_product.filter(dtp_dish_id.eq_any(dishes_to_count.keys()))
+                .select((dtp_dish_id, product_id, weight_g)).get_results::<(i64, i64, i32)>(trx_conn)?;
 
-        Ok(())
+            for (dish, product, weight) in dish_to_products_usage {
+                let already_used = products_to_weight.entry(product.clone()).or_insert(0);
+                *already_used += weight * dishes_to_count.get(&dish).unwrap();
+            };
+
+            for (p_id, weight_used) in products_to_weight {
+                diesel::update(products.find(p_id)).set(in_stock_g.eq(in_stock_g - weight_used)).execute(trx_conn)?;
+            }
+
+            diesel::update(orders.find(msg.0)).set(is_confirmed.eq(true)).execute(trx_conn)?;
+
+            Ok(())
+        })
     }
 }
 
@@ -290,27 +316,29 @@ impl Handler<PayForOrder> for PgActor {
             Err(err) => return Err(err)
         };
 
-        let order_cost = match orders.find(msg.0).select((is_paid, total_cost)).first::<(bool, i32)>(&mut conn) {
-            Ok(val) => if val.0 { return Err(get_db_err("The order is already paid")); } else { val.1 },
-            Err(err) => return Err(err)
-        };
+        conn.build_transaction().run(|trx_conn| {
+            let order_cost = match orders.find(msg.0).select((is_paid, total_cost)).first::<(bool, i32)>(trx_conn) {
+                Ok(val) => if val.0 { return Err(get_db_err("The order is already paid")); } else { val.1 },
+                Err(err) => return Err(err)
+            };
 
-        diesel::update(orders.find(msg.0)).set(is_paid.eq(true)).execute(&mut conn)?;
+            diesel::update(orders.find(msg.0)).set(is_paid.eq(true)).execute(trx_conn)?;
 
-        let today = chrono::Local::now().date_naive();
+            let today = chrono::Local::now().date_naive();
 
-        let is_first_record = stats.select(day).filter(day.eq(today)).first::<NaiveDate>(&mut conn).err() != None;
+            let is_first_record = stats.select(day).filter(day.eq(today)).first::<NaiveDate>(trx_conn).err() != None;
 
-        if is_first_record {
-            diesel::insert_into(stats).values(
-                NewStats {
-                    day: today,
-                    income: order_cost,
-                }).execute(&mut conn)
-        } else {
-            diesel::update(stats.filter(day.eq(today))).set(income.eq(income + order_cost)).execute(&mut conn)
-        }?;
+            if is_first_record {
+                diesel::insert_into(stats).values(
+                    NewStats {
+                        day: today,
+                        income: order_cost,
+                    }).execute(trx_conn)
+            } else {
+                diesel::update(stats.filter(day.eq(today))).set(income.eq(income + order_cost)).execute(trx_conn)
+            }?;
 
-        Ok(())
+            Ok(())
+        })
     }
 }
