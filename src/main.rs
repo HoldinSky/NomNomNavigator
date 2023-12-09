@@ -35,6 +35,8 @@ async fn main() -> std::io::Result<()> {
     let pg_db = init_pg_db();
     let redis_db = init_redis_db();
 
+    let addr = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".to_owned());
+
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(AppState { pg_db: pg_db.clone(), redis_db: redis_db.clone() }))
@@ -67,7 +69,7 @@ async fn main() -> std::io::Result<()> {
                     .service(services::test_route::create_mock_menu)
             )
     })
-        .bind("127.0.0.1:8080")?
+        .bind(addr)?
         .run()
         .await
 }
