@@ -572,24 +572,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "customer-services"
-version = "0.1.0"
-dependencies = [
- "actix",
- "actix-web",
- "chrono",
- "config",
- "diesel",
- "dotenv",
- "futures",
- "mongodb",
- "redis",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "darling"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1292,6 +1274,24 @@ dependencies = [
  "typed-builder",
  "uuid",
  "webpki-roots",
+]
+
+[[package]]
+name = "nnn-rust-back"
+version = "0.1.0"
+dependencies = [
+ "actix",
+ "actix-web",
+ "chrono",
+ "config",
+ "diesel",
+ "dotenv",
+ "futures",
+ "mongodb",
+ "redis",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
