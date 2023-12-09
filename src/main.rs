@@ -15,7 +15,6 @@ use services::db_utils::{AppState, get_db_pool, PgActor};
 mod schema;
 mod types;
 mod services;
-mod test;
 
 fn init_pg_db() -> Addr<PgActor> {
     let db_url = env::var("PG_DATABASE_URL").expect("PG_DATABASE_URL must be set");
