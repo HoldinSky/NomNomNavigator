@@ -68,7 +68,7 @@ impl Handler<FetchWaiters> for PgActor {
 }
 
 impl Handler<AddWaiter> for PgActor {
-    type Result = QueryResult<Waiter>;
+    type Result = QueryResult<()>;
 
     fn handle(&mut self, msg: AddWaiter, _ctx: &mut Self::Context) -> Self::Result {
         use crate::schema::waiters::dsl::waiters;
@@ -88,7 +88,9 @@ impl Handler<AddWaiter> for PgActor {
                 first_name,
                 last_name,
                 is_admin
-            )).get_result::<Waiter>(&mut conn)
+            )).execute(&mut conn)?;
+
+        Ok(())
     }
 }
 

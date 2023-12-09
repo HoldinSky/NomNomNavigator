@@ -48,6 +48,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/menu")
                     .service(services::menu_route::create_menu)
+                    .service(services::menu_route::set_active_menu)
                     .service(services::menu_route::view_menu)
                     .service(services::menu_route::get_dish)
                     .service(services::menu_route::get_dishes)

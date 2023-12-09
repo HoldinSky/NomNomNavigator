@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 // Constants
 
+pub const ACTIVE_MENU_KEY: &str = "active-menu";
 pub const MENU_KEY: &str = "menu";
 
 // actual User Defined Types

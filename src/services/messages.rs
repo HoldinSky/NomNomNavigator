@@ -9,7 +9,7 @@ use crate::services::db_models::Dish;
 pub struct FetchWaiters;
 
 #[derive(Message)]
-#[rtype(result = "QueryResult<Waiter>")]
+#[rtype(result = "QueryResult<()>")]
 pub struct AddWaiter {
     pub first_name: String,
     pub last_name: String,

@@ -25,17 +25,16 @@ pub mod waiters_route {
     #[get("/all")]
     pub async fn fetch_waiters(state: Data<AppState>) -> impl Responder {
         match state.pg_db.send(FetchWaiters).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(resp),
+            Ok(Ok(waiters)) => HttpResponse::Ok().json(waiters),
             Ok(Err(_)) => HttpResponse::NotFound().json("Waiters not found"),
             _ => HttpResponse::InternalServerError().json("Unable to retrieve waiters"),
         }
     }
 
     #[derive(Deserialize)]
-    pub struct AddWaiterBody {
-        pub first_name: String,
-        pub last_name: String,
-        pub is_admin: bool,
+    struct AddWaiterBody {
+        first_name: String,
+        last_name: String,
     }
 
     #[post("/add")]
@@ -43,9 +42,9 @@ pub mod waiters_route {
         match state.pg_db.send(AddWaiter {
             first_name: body.first_name.clone(),
             last_name: body.last_name.clone(),
-            is_admin: body.is_admin,
+            is_admin: false,
         }).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(resp),
+            Ok(Ok(_)) => HttpResponse::Ok().json("New waiter is successfully added to the database"),
             Ok(Err(err)) => HttpResponse::InternalServerError().json(err.to_string()),
             _ => HttpResponse::InternalServerError().json("Unable to insert new waiter")
         }
@@ -54,8 +53,9 @@ pub mod waiters_route {
 
 // sub-route "/menu"
 pub mod menu_route {
-    use actix_web::{get, HttpResponse, post, Responder};
-    use actix_web::web::{Data, Path};
+    use actix_web::{delete, get, HttpResponse, post, put, Responder};
+    use actix_web::web::{Data, Path, Json, Bytes};
+    use chrono::NaiveDate;
     use redis::FromRedisValue;
     use serde::Deserialize;
     use crate::services::db_models::Dish;
@@ -67,7 +67,10 @@ pub mod menu_route {
     pub async fn view_menu(state: Data<AppState>) -> impl Responder {
         match get_menu(&state.redis_db) {
             Ok(menu_json) => {
-                let menu = serde_json::from_str::<Vec<Dish>>(&menu_json).unwrap();
+                let menu = match serde_json::from_str::<Vec<Dish>>(&menu_json) {
+                    Ok(dishes) => dishes,
+                    Err(err) => return HttpResponse::InternalServerError().json("Failed to parse menu by the active-menu key")
+                };
                 HttpResponse::Ok().json(menu)
             }
             Err(err) => HttpResponse::InternalServerError().json(err)
@@ -77,7 +80,7 @@ pub mod menu_route {
     #[get("/dish/{id}")]
     pub async fn get_dish(state: Data<AppState>, path: Path<(i64)>) -> impl Responder {
         match state.pg_db.send(FetchDish(path.into_inner())).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(resp),
+            Ok(Ok(dish)) => HttpResponse::Ok().json(dish),
             Ok(Err(_)) => HttpResponse::NotFound().json("Dish with that id not found"),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to fetch dish: {err}"))
         }
@@ -86,34 +89,55 @@ pub mod menu_route {
     #[get("/all-dishes")]
     pub async fn get_dishes(state: Data<AppState>) -> impl Responder {
         match state.pg_db.send(FetchDishes).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(resp),
+            Ok(Ok(dishes)) => HttpResponse::Ok().json(dishes),
             Ok(Err(_)) => HttpResponse::NotFound().json("No dishes found"),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to fetch dishes: {err}"))
         }
     }
 
+    #[derive(Deserialize)]
+    struct CreateMenuBody {
+        dishes: Vec<i64>,
+        date: NaiveDate
+    }
+
     #[post("/create-new")]
-    pub async fn create_menu(state: Data<AppState>, body: actix_web::web::Bytes) -> impl Responder {
+    pub async fn create_menu(state: Data<AppState>, body: Bytes) -> impl Responder {
         let json_input = match String::from_utf8(Vec::from(body.as_ref())) {
-            Ok(val) => val.trim_matches('"').to_owned(),
+            Ok(val) => val,
             Err(err) => return HttpResponse::BadRequest().json("Failed to parse request. Non utf-8 characters")
         };
 
-        let dish_ids: Vec<i64> = match serde_json::from_str(json_input.as_str()) {
+        let body: CreateMenuBody = match serde_json::from_str(json_input.as_str()) {
             Ok(val) => val,
-            Err(err) => return HttpResponse::BadRequest().json("Failed to parse request. Body is not an array of dish ids")
+            Err(err) => return HttpResponse::BadRequest().json("Failed to parse request. Body is not a desired structure")
         };
 
-        match state.pg_db.send(FetchSpecificDishes(dish_ids)).await {
-            Ok(Ok(resp)) => {
-                match put_menu_to_db(state.pg_db.clone(), &state.redis_db, resp).await {
-                    Ok(key) => HttpResponse::Ok().json(format!("Successfully created menu with the key {key}")),
+        match state.pg_db.send(FetchSpecificDishes(body.dishes)).await {
+            Ok(Ok(dishes)) => {
+                match put_menu_to_db(state.pg_db.clone(), &state.redis_db, dishes, body.date).await {
+                    Ok(menu_key) => HttpResponse::Ok().json(menu_key),
                     Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
                 }
-            },
+            }
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Dishes were not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
+    }
+
+    #[put("/set-active/{date}")]
+    pub async fn set_active_menu(state: Data<AppState>, path: Path<NaiveDate>) -> impl Responder {
+        let date = path.into_inner();
+
+        match super::redis_handling::set_active_menu(&state.redis_db, date.clone()) {
+            Ok(_) => HttpResponse::Ok().json(format!("Successfully set active menu to {date}")),
+            Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+        }
+    }
+
+    #[delete("/{date}")]
+    pub async fn delete_menu(state: Data<AppState>, path: Path<NaiveDate>) -> impl Responder {
+        HttpResponse::Ok().json("Mock response")
     }
 }
 
@@ -130,7 +154,7 @@ pub mod order_route {
         let table_id = path.into_inner();
 
         match state.pg_db.send(CreateOrder(table_id)).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Id of newly created order: {}", resp)),
+            Ok(Ok(id)) => HttpResponse::Ok().json(id),
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Table was not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
@@ -141,7 +165,7 @@ pub mod order_route {
         let (order_id, dish_id) = path.into_inner();
 
         match state.pg_db.send(AddDishToOrder { order_id, dish_id }).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Order id: {}", resp)),
+            Ok(Ok(id)) => HttpResponse::Ok().json(id),
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order was not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
@@ -152,7 +176,7 @@ pub mod order_route {
         let (order_id, dish_id) = path.into_inner();
 
         match state.pg_db.send(DecrementDishInOrder { order_id, dish_id }).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Order id: {}", resp)),
+            Ok(Ok(id)) => HttpResponse::Ok().json(id),
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order or dish were not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
@@ -163,7 +187,7 @@ pub mod order_route {
         let (order_id, dish_id) = path.into_inner();
 
         match state.pg_db.send(DeleteDishFromOrder { order_id, dish_id }).await {
-            Ok(Ok(resp)) => HttpResponse::Ok().json(format!("Order id: {}", resp)),
+            Ok(Ok(id)) => HttpResponse::Ok().json(id),
             Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order or dish were not found: {err}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
@@ -194,6 +218,7 @@ pub mod order_route {
 
 // sub-route "/test"
 pub mod test_route {
+    use std::collections::HashSet;
     use actix_web::{get, HttpResponse, post, Responder};
     use actix_web::web::Data;
     use redis::Commands;
@@ -213,7 +238,10 @@ pub mod test_route {
             _ => return HttpResponse::InternalServerError().json("Unable to get dishes from sql database")
         };
 
-        match put_menu_to_db(state.pg_db.clone(), &state.redis_db, dishes).await {
+        let mut unique_dish_types = HashSet::new();
+        dishes.retain(|dish| unique_dish_types.insert(dish.type_.clone()));
+
+        match put_menu_to_db(state.pg_db.clone(), &state.redis_db, dishes, chrono::Local::now().date_naive()).await {
             Ok(key) => HttpResponse::Ok().json(format!("Menu is successfully composed and placed into redis db by the key '{key}'")),
             Err(err) => HttpResponse::InternalServerError().json(err),
         }
