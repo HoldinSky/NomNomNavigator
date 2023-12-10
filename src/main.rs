@@ -11,6 +11,7 @@ use dotenv::dotenv;
 use futures::StreamExt;
 
 use services::db_utils::{AppState, get_db_pool, PgActor};
+use crate::services::redis_handling::RedisHandler;
 
 mod schema;
 mod types;
@@ -39,7 +40,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(Data::new(AppState { pg_db: pg_db.clone(), redis_db: redis_db.clone() }))
+            .app_data(Data::new(AppState { pg_db: pg_db.clone(), redis_handler: RedisHandler::new(redis_db.clone()) }))
             .service(services::home_page)
             .service(
                 web::scope("/waiters")
@@ -51,6 +52,7 @@ async fn main() -> std::io::Result<()> {
                     .service(services::menu_route::create_menu)
                     .service(services::menu_route::set_active_menu)
                     .service(services::menu_route::view_menu)
+                    .service(services::menu_route::delete_menu)
                     .service(services::menu_route::get_dish)
                     .service(services::menu_route::get_dishes)
             )

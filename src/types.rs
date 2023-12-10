@@ -8,6 +8,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use serde::ser::StdError;
 use serde::{Deserialize, Serialize};
+use crate::services::db_models::Dish;
 
 // Constants
 
@@ -30,6 +31,12 @@ pub enum DishType {
     Salad,
     Drink,
     Alcohol,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedisDish {
+    pub dish: Dish,
+    pub ingredients: Vec<(String, i32)>,
 }
 
 // additional code for types

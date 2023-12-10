@@ -53,7 +53,9 @@ pub mod waiters_route {
 
 // sub-route "/menu"
 pub mod menu_route {
+    use std::collections::HashSet;
     use actix_web::{delete, get, HttpResponse, post, put, Responder};
+    use actix_web::http::header::{CONTENT_TYPE, HeaderName, HeaderValue};
     use actix_web::web::{Data, Path, Json, Bytes};
     use chrono::NaiveDate;
     use redis::FromRedisValue;
@@ -61,28 +63,22 @@ pub mod menu_route {
     use crate::services::db_models::Dish;
     use crate::services::db_utils::AppState;
     use crate::services::messages::{FetchSpecificDishes, CreateOrder, FetchDish, FetchDishes};
-    use crate::services::redis_handling::{get_menu, put_menu_to_db};
 
     #[get("")]
     pub async fn view_menu(state: Data<AppState>) -> impl Responder {
-        match get_menu(&state.redis_db) {
-            Ok(menu_json) => {
-                let menu = match serde_json::from_str::<Vec<Dish>>(&menu_json) {
-                    Ok(dishes) => dishes,
-                    Err(err) => return HttpResponse::InternalServerError().json("Failed to parse menu by the active-menu key")
-                };
-                HttpResponse::Ok().json(menu)
-            }
+        match state.redis_handler.get_menu() {
+            Ok(menu_json) => HttpResponse::Ok()
+                .append_header(("Content-Type", "application/json")).body(menu_json),
             Err(err) => HttpResponse::InternalServerError().json(err)
         }
     }
 
     #[get("/dish/{id}")]
     pub async fn get_dish(state: Data<AppState>, path: Path<(i64)>) -> impl Responder {
-        match state.pg_db.send(FetchDish(path.into_inner())).await {
-            Ok(Ok(dish)) => HttpResponse::Ok().json(dish),
-            Ok(Err(_)) => HttpResponse::NotFound().json("Dish with that id not found"),
-            Err(err) => HttpResponse::InternalServerError().json(format!("Unable to fetch dish: {err}"))
+        match state.redis_handler.get_dish(path.into_inner()) {
+            Ok(redis_dish_json) => HttpResponse::Ok()
+                .append_header(("Content-Type", "application/json")).body(redis_dish_json),
+            Err(err) => HttpResponse::NotFound().json(err)
         }
     }
 
@@ -98,7 +94,7 @@ pub mod menu_route {
     #[derive(Deserialize)]
     struct CreateMenuBody {
         dishes: Vec<i64>,
-        date: NaiveDate
+        date: NaiveDate,
     }
 
     #[post("/create-new")]
@@ -113,9 +109,16 @@ pub mod menu_route {
             Err(err) => return HttpResponse::BadRequest().json("Failed to parse request. Body is not a desired structure")
         };
 
-        match state.pg_db.send(FetchSpecificDishes(body.dishes)).await {
+        let mut unique_ids = HashSet::new();
+        let mut dish_ids = body.dishes;
+
+        dish_ids.retain(|id| {
+            unique_ids.insert(id.clone())
+        });
+
+        match state.pg_db.send(FetchSpecificDishes(dish_ids)).await {
             Ok(Ok(dishes)) => {
-                match put_menu_to_db(state.pg_db.clone(), &state.redis_db, dishes, body.date).await {
+                match state.redis_handler.save_new_menu(state.pg_db.clone(), dishes, &body.date).await {
                     Ok(menu_key) => HttpResponse::Ok().json(menu_key),
                     Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
                 }
@@ -129,7 +132,7 @@ pub mod menu_route {
     pub async fn set_active_menu(state: Data<AppState>, path: Path<NaiveDate>) -> impl Responder {
         let date = path.into_inner();
 
-        match super::redis_handling::set_active_menu(&state.redis_db, date.clone()) {
+        match state.redis_handler.set_active_menu(&date) {
             Ok(_) => HttpResponse::Ok().json(format!("Successfully set active menu to {date}")),
             Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
         }
@@ -137,7 +140,12 @@ pub mod menu_route {
 
     #[delete("/{date}")]
     pub async fn delete_menu(state: Data<AppState>, path: Path<NaiveDate>) -> impl Responder {
-        HttpResponse::Ok().json("Mock response")
+        let date = path.into_inner();
+
+        match state.redis_handler.delete_menu(&date) {
+            Ok(_) => HttpResponse::Ok().json(format!("Successfully deleted menu for {date}")),
+            Err(err) => HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+        }
     }
 }
 
@@ -224,7 +232,6 @@ pub mod test_route {
     use redis::Commands;
     use crate::services::db_utils::AppState;
     use crate::services::messages::{AddWaiter, FetchDishes};
-    use crate::services::redis_handling::put_menu_to_db;
 
     #[get("/healthcheck")]
     pub async fn healthcheck() -> impl Responder {
@@ -241,7 +248,7 @@ pub mod test_route {
         let mut unique_dish_types = HashSet::new();
         dishes.retain(|dish| unique_dish_types.insert(dish.type_.clone()));
 
-        match put_menu_to_db(state.pg_db.clone(), &state.redis_db, dishes, chrono::Local::now().date_naive()).await {
+        match state.redis_handler.save_new_menu(state.pg_db.clone(), dishes, &chrono::Local::now().date_naive()).await {
             Ok(key) => HttpResponse::Ok().json(format!("Menu is successfully composed and placed into redis db by the key '{key}'")),
             Err(err) => HttpResponse::InternalServerError().json(err),
         }

@@ -1,6 +1,7 @@
 use actix::{Actor, Addr, SyncContext};
 use diesel::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
+use crate::services::redis_handling::RedisHandler;
 
 use crate::types::PoolInitializationError;
 
@@ -8,7 +9,7 @@ pub struct PgActor(pub Pool<ConnectionManager<PgConnection>>);
 
 pub struct AppState {
     pub pg_db: Addr<PgActor>,
-    pub redis_db: redis::Client
+    pub redis_handler: RedisHandler
 }
 
 impl Actor for PgActor {
