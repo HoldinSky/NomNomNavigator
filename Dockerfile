@@ -26,7 +26,9 @@ RUN cargo build --release --locked --bin nnn-rust-back
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
+
+RUN apt update && apt install -y libpq5 && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/nnn-rust-back /usr/local/bin
 
 EXPOSE 8080
-CMD ["/usr/local/bin/app"]
+ENTRYPOINT ["/usr/local/bin/nnn-rust-back"]
