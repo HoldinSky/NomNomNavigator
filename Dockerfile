@@ -29,4 +29,4 @@ WORKDIR /app
 COPY --from=builder /app/target/release/nnn-rust-back /usr/local/bin
 
 EXPOSE 8080
-CMD ["/usr/local/bin/app"]
+ENTRYPOINT ["/usr/local/bin/nnn-rust-back"]
