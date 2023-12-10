@@ -80,12 +80,52 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    worker (id) {
+        id -> Int4,
+        #[max_length = 255]
+        first_name -> Varchar,
+        #[max_length = 255]
+        last_name -> Varchar,
+        role_id -> Int4,
+        created_at -> Timestamptz,
+        deleted_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    worker_auth (id) {
+        id -> Int4,
+        #[max_length = 255]
+        email -> Varchar,
+        #[max_length = 255]
+        password -> Varchar,
+        #[max_length = 255]
+        token -> Nullable<Varchar>,
+        worker_id -> Int4,
+        created_at -> Timestamptz,
+        deleted_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    worker_role (id) {
+        id -> Int4,
+        #[max_length = 255]
+        title -> Varchar,
+        created_at -> Timestamptz,
+        deleted_at -> Nullable<Timestamptz>,
+    }
+}
+
 diesel::joinable!(dish_to_order -> dishes (dish_id));
 diesel::joinable!(dish_to_order -> orders (order_id));
 diesel::joinable!(dish_to_product -> dishes (dish_id));
 diesel::joinable!(dish_to_product -> products (product_id));
 diesel::joinable!(orders -> tables (table_id));
 diesel::joinable!(tables -> waiters (waiter_id));
+diesel::joinable!(worker -> worker_role (role_id));
+diesel::joinable!(worker_auth -> worker (worker_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     dish_to_order,
@@ -96,4 +136,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     stats,
     tables,
     waiters,
+    worker,
+    worker_auth,
+    worker_role,
 );

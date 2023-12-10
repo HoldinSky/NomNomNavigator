@@ -51,6 +51,44 @@ pub mod waiters_route {
     }
 }
 
+// sub-route "/dishes"
+pub mod dishes_route {
+    use actix_web::{HttpResponse, post, Responder};
+    use actix_web::web::{Data, Json};
+    use serde::{Deserialize, Serialize};
+    use crate::services::db_utils::AppState;
+    use crate::services::messages::{AddWaiter, CreateDish};
+    use crate::types::{DishType, Ingredient};
+
+    #[derive(Deserialize)]
+    struct CreateDishBody {
+        dish_name: String,
+        dish_type: DishType,
+        price: i32,
+        approx_cook_time_s: i32,
+        portion_weight_g: i32,
+        ingredients: Vec<Ingredient>,
+    }
+
+    #[post("/add")]
+    pub async fn create_dish(state: Data<AppState>, body: Json<CreateDishBody>) -> impl Responder {
+        let body = body.into_inner();
+
+        match state.pg_db.send(CreateDish {
+            dish_name: body.dish_name,
+            dish_type: body.dish_type,
+            price: body.price,
+            approx_cook_time_s: body.approx_cook_time_s,
+            portion_weight_g: body.portion_weight_g,
+            ingredients: body.ingredients,
+        }).await {
+            Ok(Ok(dish)) => HttpResponse::Ok().json(dish),
+            Ok(Err(err)) => HttpResponse::InternalServerError().json(err.to_string()),
+            _ => HttpResponse::InternalServerError().json("Unable to insert new waiter")
+        }
+    }
+}
+
 // sub-route "/menu"
 pub mod menu_route {
     use std::collections::HashSet;

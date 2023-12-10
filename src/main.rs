@@ -66,6 +66,10 @@ async fn main() -> std::io::Result<()> {
                     .service(services::order_route::pay_for_order)
             )
             .service(
+                web::scope("/dishes")
+                    .service(services::dishes_route::create_dish)
+            )
+            .service(
                 web::scope("/test")
                     .service(services::test_route::healthcheck)
                     .service(services::test_route::create_mock_menu)

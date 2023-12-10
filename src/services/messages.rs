@@ -3,6 +3,7 @@ use diesel::QueryResult;
 
 use crate::services::db_models::Waiter;
 use crate::services::db_models::Dish;
+use crate::types::{DishType, Ingredient};
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<Vec<Waiter>>")]
@@ -65,3 +66,14 @@ pub struct ConfirmOrder(pub i64);
 #[derive(Message)]
 #[rtype(result = "QueryResult<()>")]
 pub struct PayForOrder(pub i64);
+
+#[derive(Message)]
+#[rtype(result = "QueryResult<Dish>")]
+pub struct CreateDish {
+    pub dish_name: String,
+    pub dish_type: DishType,
+    pub price: i32,
+    pub approx_cook_time_s: i32,
+    pub portion_weight_g: i32,
+    pub ingredients: Vec<Ingredient>
+}

@@ -10,23 +10,12 @@ use diesel::{
 };
 use diesel::connection::SimpleConnection;
 use diesel::expression::AsExpression;
+use crate::schema::dish_to_product::dsl::dish_to_product;
 
 use crate::services::db_models::{Waiter, Dish};
 use crate::services::db_utils::PgActor;
-use crate::services::messages::{
-    AddWaiter,
-    FetchWaiters,
-    FetchDish,
-    FetchDishes,
-    FetchSpecificDishes,
-    FetchDishIngredients,
-    AddDishToOrder,
-    DecrementDishInOrder,
-    DeleteDishFromOrder,
-    ConfirmOrder,
-    PayForOrder,
-    CreateOrder,
-};
+use crate::services::insertable::DishProductMapping;
+use crate::services::messages::{AddWaiter, FetchWaiters, FetchDish, FetchDishes, FetchSpecificDishes, FetchDishIngredients, AddDishToOrder, DecrementDishInOrder, DeleteDishFromOrder, ConfirmOrder, PayForOrder, CreateOrder, CreateDish};
 
 fn establish_connection(pool: &Pool<ConnectionManager<PgConnection>>) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
     match pool.get() {
@@ -91,6 +80,45 @@ impl Handler<AddWaiter> for PgActor {
             )).execute(&mut conn)?;
 
         Ok(())
+    }
+}
+
+impl Handler<CreateDish> for PgActor {
+    type Result = QueryResult<Dish>;
+
+    fn handle(&mut self, msg: CreateDish, _ctx: &mut Self::Context) -> Self::Result {
+        use crate::schema::dishes::{dsl::dishes, id, name, type_, portion_weight_g, price, approx_cook_time_s};
+        use crate::schema::dish_to_product::{dsl::dish_to_product};
+        use crate::services::insertable::NewDish;
+        use crate::services::insertable::DishProductMapping;
+
+        let mut conn = establish_connection(&self.0)?;
+
+        conn.build_transaction().run(move |trx_conn| {
+            let new_dish = diesel::insert_into(dishes)
+                .values(
+                    NewDish {
+                        name: msg.dish_name,
+                        type_: msg.dish_type.to_string(),
+                        approx_cook_time_s: msg.approx_cook_time_s,
+                        portion_weight_g: msg.portion_weight_g,
+                        price: msg.price
+                    }
+                ).returning((id, name, type_, portion_weight_g, price, approx_cook_time_s)).get_result::<Dish>(trx_conn)?;
+
+            for ing in msg.ingredients {
+                diesel::insert_into(dish_to_product)
+                    .values(
+                        DishProductMapping {
+                            dish_id: new_dish.id,
+                            product_id: ing.id,
+                            weight_g: ing.used_g
+                        }
+                    ).execute(trx_conn)?;
+            }
+
+            Ok(new_dish)
+        })
     }
 }
 
