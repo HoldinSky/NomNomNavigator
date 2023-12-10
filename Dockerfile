@@ -8,8 +8,6 @@
 #     -e ADDRESS=0.0.0.0:8080 (Port same as in -p variable)
 #     nnn-rust-image
 
-ARG APP_NAME=nnn-rust-back
-
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
 WORKDIR /app
 
@@ -23,10 +21,12 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY . .
-RUN cargo build --release --locked --bin $APP_NAME
+RUN cargo build --release --locked --bin nnn-rust-back
 
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
-COPY --from=builder /app/target/release/$APP_NAME /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/app"]
+COPY --from=builder /app/target/release/nnn-rust-back /usr/local/bin
+
+EXPOSE 8080
+CMD ["/usr/local/bin/app"]
