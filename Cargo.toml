@@ -15,6 +15,7 @@ tokio = {version = "1.34.0", features = ["full"]}
 
 actix = "0.13.1"
 actix-web = "4.4.0"
+actix-cors = "0.6.5"
 diesel = { version = "2.1.4", features = ["postgres", "chrono", "r2d2"] }
 redis = "0.24.0"
 

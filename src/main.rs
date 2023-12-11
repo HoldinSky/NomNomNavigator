@@ -3,19 +3,20 @@
 use std::env;
 
 use actix::{Addr, SyncArbiter};
-use actix_web::{App, HttpServer, web};
+use actix_cors::Cors;
 use actix_web::web::Data;
-use diesel::PgConnection;
+use actix_web::{http, web, App, HttpServer};
 use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::PgConnection;
 use dotenv::dotenv;
 use futures::StreamExt;
 
-use services::db_utils::{AppState, get_db_pool, PgActor};
 use crate::services::redis_handling::RedisHandler;
+use services::db_utils::{get_db_pool, AppState, PgActor};
 
 mod schema;
-mod types;
 mod services;
+mod types;
 
 fn init_pg_db() -> Addr<PgActor> {
     let db_url = env::var("PG_DATABASE_URL").expect("PG_DATABASE_URL must be set");
@@ -39,13 +40,22 @@ async fn main() -> std::io::Result<()> {
     let addr = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".to_owned());
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:5173")
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .allow_any_header()
+            .max_age(3600);
+
         App::new()
-            .app_data(Data::new(AppState { pg_db: pg_db.clone(), redis_handler: RedisHandler::new(redis_db.clone()) }))
+            .app_data(Data::new(AppState {
+                pg_db: pg_db.clone(),
+                redis_handler: RedisHandler::new(redis_db.clone()),
+            }))
             .service(services::home_page)
             .service(
                 web::scope("/waiters")
                     .service(services::waiters_route::fetch_waiters)
-                    .service(services::waiters_route::add_waiter)
+                    .service(services::waiters_route::add_waiter),
             )
             .service(
                 web::scope("/menu")
@@ -54,7 +64,7 @@ async fn main() -> std::io::Result<()> {
                     .service(services::menu_route::view_menu)
                     .service(services::menu_route::delete_menu)
                     .service(services::menu_route::get_dish)
-                    .service(services::menu_route::get_dishes)
+                    .service(services::menu_route::get_dishes),
             )
             .service(
                 web::scope("/order")
@@ -63,19 +73,17 @@ async fn main() -> std::io::Result<()> {
                     .service(services::order_route::decrement_dishes_from_order)
                     .service(services::order_route::delete_dish_from_order)
                     .service(services::order_route::confirm_order)
-                    .service(services::order_route::pay_for_order)
+                    .service(services::order_route::pay_for_order),
             )
-            .service(
-                web::scope("/dishes")
-                    .service(services::dishes_route::create_dish)
-            )
+            .service(web::scope("/dishes").service(services::dishes_route::create_dish))
             .service(
                 web::scope("/test")
                     .service(services::test_route::healthcheck)
-                    .service(services::test_route::create_mock_menu)
+                    .service(services::test_route::create_mock_menu),
             )
+            .wrap(cors)
     })
-        .bind(addr)?
-        .run()
-        .await
+    .bind(addr)?
+    .run()
+    .await
 }
