@@ -6,6 +6,7 @@
 #     -e PG_DATABASE_URL=postgres://[USER]:[PASS]@[HOST]:[PORT]/[DB_NAME] \
 #     -e REDIS_DATABASE_URI=redis://[HOST]:[PORT] \
 #     -e ADDRESS=0.0.0.0:8080 (Port same as in -p variable)
+#     -e FRONT_ORIGIN=http(s)://[HOST]:[PORT]
 #     nnn-rust-image
 
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef

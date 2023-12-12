@@ -38,10 +38,11 @@ async fn main() -> std::io::Result<()> {
     let redis_db = init_redis_db();
 
     let addr = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".to_owned());
+    let frontend_origin = env::var("FRONT_ORIGIN").unwrap_or("http://localhost:5173".to_owned());
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://localhost:5173")
+            .allowed_origin(&frontend_origin)
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
             .allow_any_header()
             .max_age(3600);
