@@ -221,11 +221,24 @@ pub mod order_route {
     use crate::services::db_utils::AppState;
     use crate::services::messages::{
         AddDishToOrder, ConfirmOrder, CreateOrder, DecrementDishInOrder, DeleteDishFromOrder,
-        FetchDish, PayForOrder,
+        FetchDish, GetOrder, PayForOrder,
     };
     use actix_web::web::{Data, Path};
-    use actix_web::{delete, post, put, HttpResponse, Responder};
+    use actix_web::{delete, get, post, put, HttpResponse, Responder};
     use serde::de::IntoDeserializer;
+
+    #[get("/{order_id}")]
+    pub async fn get_ordered_dishes(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let order_id = path.into_inner();
+
+        match state.pg_db.send(GetOrder(order_id)).await {
+            Ok(Ok(dishes)) => HttpResponse::Ok().json(dishes),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order was not found: {err}")),
+            Err(err) => {
+                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+            }
+        }
+    }
 
     #[post("/create-for-table/{table_id}")]
     pub async fn create_blank_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {

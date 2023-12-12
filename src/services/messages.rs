@@ -1,8 +1,8 @@
 use actix::Message;
 use diesel::QueryResult;
 
-use crate::services::db_models::Waiter;
 use crate::services::db_models::Dish;
+use crate::services::db_models::Waiter;
 use crate::types::{DishType, Ingredient};
 
 #[derive(Message)]
@@ -14,7 +14,7 @@ pub struct FetchWaiters;
 pub struct AddWaiter {
     pub first_name: String,
     pub last_name: String,
-    pub is_admin: bool
+    pub is_admin: bool,
 }
 
 #[derive(Message)]
@@ -39,6 +39,10 @@ pub struct FetchDishIngredients(pub i64);
 pub struct CreateOrder(pub i64);
 
 #[derive(Message)]
+#[rtype(result = "QueryResult<Vec<Dish>>")]
+pub struct GetOrder(pub i64);
+
+#[derive(Message)]
 #[rtype(result = "QueryResult<i64>")]
 pub struct AddDishToOrder {
     pub order_id: i64,
@@ -49,14 +53,14 @@ pub struct AddDishToOrder {
 #[rtype(result = "QueryResult<i64>")]
 pub struct DecrementDishInOrder {
     pub order_id: i64,
-    pub dish_id: i64
+    pub dish_id: i64,
 }
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<i64>")]
 pub struct DeleteDishFromOrder {
     pub order_id: i64,
-    pub dish_id: i64
+    pub dish_id: i64,
 }
 
 #[derive(Message)]
@@ -75,5 +79,5 @@ pub struct CreateDish {
     pub price: i32,
     pub approx_cook_time_s: i32,
     pub portion_weight_g: i32,
-    pub ingredients: Vec<Ingredient>
+    pub ingredients: Vec<Ingredient>,
 }
