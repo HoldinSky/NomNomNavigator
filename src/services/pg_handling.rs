@@ -201,10 +201,10 @@ impl Handler<CreateOrder> for PgActor {
 }
 
 impl Handler<GetOrder> for PgActor {
-    type Result = QueryResult<Vec<Dish>>;
+    type Result = QueryResult<Vec<(Dish, i32)>>;
 
     fn handle(&mut self, msg: GetOrder, _ctx: &mut Self::Context) -> Self::Result {
-        use crate::schema::dish_to_order::{dish_id, dsl::dish_to_order, order_id};
+        use crate::schema::dish_to_order::{count, dish_id, dsl::dish_to_order, order_id};
         use crate::schema::dishes::{
             dsl::dishes, id as dish_pk, name, portion_weight_g, price, type_,
         };
@@ -212,7 +212,7 @@ impl Handler<GetOrder> for PgActor {
 
         let mut conn = establish_connection(&self.0)?;
 
-        dish_to_order
+        let query_res: Vec<Dish> = dish_to_order
             .filter(order_id.eq(msg.0))
             .inner_join(dishes)
             .select((
@@ -224,7 +224,22 @@ impl Handler<GetOrder> for PgActor {
                 approx_cook_time_s,
             ))
             .filter(dish_pk.eq(dish_id))
-            .get_results::<Dish>(&mut conn)
+            .get_results::<Dish>(&mut conn)?;
+
+        conn.build_transaction().run(|trx_conn| {
+            let mut to_return = vec![];
+            for ele in query_res {
+                let dish_count = dish_to_order
+                    .filter(dish_id.eq(ele.id))
+                    .filter(order_id.eq(msg.0))
+                    .select(count)
+                    .first::<i32>(trx_conn)?;
+
+                to_return.push((ele, dish_count));
+            }
+
+            Ok(to_return)
+        })
     }
 }
 

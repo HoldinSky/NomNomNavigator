@@ -1,14 +1,14 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use diesel::{AsExpression, FromSqlRow, SqlType};
 use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::query_builder::QueryId;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use serde::{Deserialize, Serialize};
+use diesel::{AsExpression, FromSqlRow, SqlType};
 use serde::ser::StdError;
+use serde::{Deserialize, Serialize};
 
 use crate::services::db_models::Dish;
 
@@ -22,8 +22,7 @@ pub const MENU_KEY: &str = "menu";
 #[derive(Debug)]
 pub struct PoolInitializationError(pub String);
 
-#[derive(FromSqlRow, AsExpression, Serialize, Deserialize)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(FromSqlRow, AsExpression, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[diesel(sql_type = Text)]
 pub enum DishType {
     Main,
@@ -44,7 +43,13 @@ pub struct RedisDish {
 #[derive(Deserialize)]
 pub struct Ingredient {
     pub id: i64,
-    pub used_g: i32
+    pub used_g: i32,
+}
+
+#[derive(Serialize)]
+pub struct DishWithCount {
+    pub dish: Dish,
+    pub count: i32,
 }
 
 // additional code for types
@@ -92,7 +97,9 @@ impl FromSql<Text, Pg> for DishType {
             "salad" => Ok(DishType::Salad),
             "drink" => Ok(DishType::Drink),
             "alcohol" => Ok(DishType::Alcohol),
-            _ => Err(Box::new(UnknownDishType("Couldn't recognize dish type".into())))
+            _ => Err(Box::new(UnknownDishType(
+                "Couldn't recognize dish type".into(),
+            ))),
         }
     }
 }
@@ -119,7 +126,7 @@ impl DishType {
             "salad" => Ok(DishType::Salad),
             "drink" => Ok(DishType::Drink),
             "alcohol" => Ok(DishType::Alcohol),
-            _ => Err(format!("Couldn't recognize dish type: {}", input))
+            _ => Err(format!("Couldn't recognize dish type: {}", input)),
         }
     }
 }

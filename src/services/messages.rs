@@ -39,7 +39,7 @@ pub struct FetchDishIngredients(pub i64);
 pub struct CreateOrder(pub i64);
 
 #[derive(Message)]
-#[rtype(result = "QueryResult<Vec<Dish>>")]
+#[rtype(result = "QueryResult<Vec<(Dish, i32)>>")]
 pub struct GetOrder(pub i64);
 
 #[derive(Message)]
