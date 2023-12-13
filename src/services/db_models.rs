@@ -42,7 +42,7 @@ pub struct Order {
     pub is_paid: bool,
     pub is_cooked: bool,
     pub created_at: NaiveDateTime,
-    pub served_at: Option<NaiveDateTime>,
+    pub cooked_at: Option<NaiveDateTime>,
     pub confirmed_at: Option<NaiveDateTime>,
 }
 
