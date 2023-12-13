@@ -1,20 +1,17 @@
 #![allow(unused)]
 #![allow(clippy::all)]
 
-use std::fmt::Debug;
-
-use chrono::{DateTime, NaiveDate, serde::ts_seconds_option, Utc};
+use crate::types::DishType;
+use chrono::{serde::ts_seconds_option, DateTime, NaiveDate, NaiveDateTime, Utc};
 use diesel::{Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-
-use crate::types::DishType;
+use std::fmt::Debug;
 
 #[derive(Queryable, Debug, Serialize)]
 pub struct DishToOrder {
     pub id: i64,
     pub dish_id: i64,
     pub order_id: i64,
-    pub dish_price: i32,
     pub count: i32,
 }
 
@@ -36,13 +33,17 @@ pub struct Dish {
     pub approx_cook_time_s: i32,
 }
 
-#[derive(Queryable, Debug, Serialize)]
+#[derive(Queryable, Debug, Serialize, Deserialize, Clone)]
 pub struct Order {
     pub id: i64,
     pub table_id: i64,
     pub total_cost: i32,
     pub is_confirmed: bool,
-    pub is_paid: bool
+    pub is_paid: bool,
+    pub is_cooked: bool,
+    pub created_at: NaiveDateTime,
+    pub served_at: Option<NaiveDateTime>,
+    pub confirmed_at: Option<NaiveDateTime>,
 }
 
 #[derive(Queryable, Debug, Serialize)]
@@ -53,12 +54,18 @@ pub struct Product {
 }
 
 #[derive(Queryable, Debug, Serialize)]
+pub struct Stats {
+    pub id: i64,
+    pub day: NaiveDate,
+    pub income: i32,
+}
+
+#[derive(Queryable, Debug, Serialize)]
 pub struct Table {
     pub id: i64,
     pub seat_count: i32,
     pub is_occupied: bool,
-    #[serde(with = "ts_seconds_option")]
-    pub reserved_at: Option<DateTime<Utc>>,
+    pub reserved_at: Option<NaiveDateTime>,
     pub reserved_by: Option<String>,
     pub waiter_id: Option<i64>,
 }
@@ -68,12 +75,33 @@ pub struct Waiter {
     pub id: i64,
     pub first_name: String,
     pub last_name: String,
-    pub is_admin: bool,
 }
 
 #[derive(Queryable, Debug, Serialize)]
-pub struct Stats {
-    pub id: i64,
-    pub day: NaiveDate,
-    pub income: i32,
+pub struct Worker {
+    pub id: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub role_id: i32,
+    pub created_at: NaiveDateTime,
+    pub deleted_at: Option<NaiveDateTime>,
+}
+
+#[derive(Queryable, Debug, Serialize)]
+pub struct WorkerAuth {
+    pub id: i32,
+    pub email: String,
+    pub password: String,
+    pub token: Option<String>,
+    pub worker_id: i32,
+    pub created_at: NaiveDateTime,
+    pub deleted_at: Option<NaiveDateTime>,
+}
+
+#[derive(Queryable, Debug, Serialize)]
+pub struct WorkerRole {
+    pub id: i32,
+    pub title: String,
+    pub created_at: NaiveDateTime,
+    pub deleted_at: Option<NaiveDateTime>,
 }

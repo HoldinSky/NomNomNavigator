@@ -10,7 +10,7 @@ use diesel::{AsExpression, FromSqlRow, SqlType};
 use serde::ser::StdError;
 use serde::{Deserialize, Serialize};
 
-use crate::services::db_models::Dish;
+use crate::services::db_models::{Dish, Order};
 
 // Constants
 
@@ -46,10 +46,16 @@ pub struct Ingredient {
     pub used_g: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DishWithCount {
     pub dish: Dish,
     pub count: i32,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OrderInfo {
+    pub order: Order,
+    pub dishes: Vec<DishWithCount>,
 }
 
 // additional code for types

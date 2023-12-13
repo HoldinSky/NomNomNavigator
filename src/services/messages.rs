@@ -3,7 +3,7 @@ use diesel::QueryResult;
 
 use crate::services::db_models::Dish;
 use crate::services::db_models::Waiter;
-use crate::types::{DishType, Ingredient};
+use crate::types::{DishType, Ingredient, OrderInfo};
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<Vec<Waiter>>")]
@@ -39,8 +39,12 @@ pub struct FetchDishIngredients(pub i64);
 pub struct CreateOrder(pub i64);
 
 #[derive(Message)]
-#[rtype(result = "QueryResult<Vec<(Dish, i32)>>")]
-pub struct GetOrder(pub i64);
+#[rtype(result = "QueryResult<OrderInfo>")]
+pub struct FetchOrder(pub i64);
+
+#[derive(Message)]
+#[rtype(result = "QueryResult<Vec<OrderInfo>>")]
+pub struct FetchOrders;
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<i64>")]
@@ -66,6 +70,10 @@ pub struct DeleteDishFromOrder {
 #[derive(Message)]
 #[rtype(result = "QueryResult<()>")]
 pub struct ConfirmOrder(pub i64);
+
+#[derive(Message)]
+#[rtype(result = "QueryResult<()>")]
+pub struct CookOrder(pub i64);
 
 #[derive(Message)]
 #[rtype(result = "QueryResult<()>")]

@@ -1,9 +1,10 @@
+// @generated automatically by Diesel CLI.
+
 diesel::table! {
     dish_to_order (id) {
         id -> Int8,
         dish_id -> Int8,
         order_id -> Int8,
-        dish_price -> Int4,
         count -> Int4,
     }
 }
@@ -36,7 +37,11 @@ diesel::table! {
         table_id -> Int8,
         total_cost -> Int4,
         is_confirmed -> Bool,
-        is_paid -> Bool
+        is_paid -> Bool,
+        is_cooked -> Bool,
+        created_at -> Timestamptz,
+        cooked_at -> Nullable<Timestamptz>,
+        confirmed_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -62,7 +67,7 @@ diesel::table! {
         id -> Int8,
         seat_count -> Int4,
         is_occupied -> Bool,
-        reserved_at -> Nullable<Timestamp>,
+        reserved_at -> Nullable<Timestamptz>,
         #[max_length = 50]
         reserved_by -> Nullable<Varchar>,
         waiter_id -> Nullable<Int8>,
@@ -76,7 +81,6 @@ diesel::table! {
         first_name -> Varchar,
         #[max_length = 40]
         last_name -> Varchar,
-        is_admin -> Bool,
     }
 }
 

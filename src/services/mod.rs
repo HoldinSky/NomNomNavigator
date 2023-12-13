@@ -26,7 +26,7 @@ pub mod waiters_route {
     pub async fn fetch_waiters(state: Data<AppState>) -> impl Responder {
         match state.pg_db.send(FetchWaiters).await {
             Ok(Ok(waiters)) => HttpResponse::Ok().json(waiters),
-            Ok(Err(_)) => HttpResponse::NotFound().json("Waiters not found"),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             _ => HttpResponse::InternalServerError().json("Unable to retrieve waiters"),
         }
     }
@@ -51,7 +51,7 @@ pub mod waiters_route {
             Ok(Ok(_)) => {
                 HttpResponse::Ok().json("New waiter is successfully added to the database")
             }
-            Ok(Err(err)) => HttpResponse::InternalServerError().json(err.to_string()),
+            Ok(Err(err)) => HttpResponse::InternalServerError().json(format!("Error: {err}")),
             _ => HttpResponse::InternalServerError().json("Unable to insert new waiter"),
         }
     }
@@ -93,7 +93,7 @@ pub mod dishes_route {
             .await
         {
             Ok(Ok(dish)) => HttpResponse::Ok().json(dish),
-            Ok(Err(err)) => HttpResponse::InternalServerError().json(err.to_string()),
+            Ok(Err(err)) => HttpResponse::InternalServerError().json(format!("Error: {err}")),
             _ => HttpResponse::InternalServerError().json("Unable to insert new waiter"),
         }
     }
@@ -136,7 +136,7 @@ pub mod menu_route {
     pub async fn get_dishes(state: Data<AppState>) -> impl Responder {
         match state.pg_db.send(FetchDishes).await {
             Ok(Ok(dishes)) => HttpResponse::Ok().json(dishes),
-            Ok(Err(_)) => HttpResponse::NotFound().json("No dishes found"),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to fetch dishes: {err}"))
             }
@@ -184,7 +184,7 @@ pub mod menu_route {
                         .json(format!("Unable to perform action: {err}")),
                 }
             }
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Dishes were not found: {err}")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }
@@ -220,20 +220,31 @@ pub mod menu_route {
 pub mod order_route {
     use crate::services::db_utils::AppState;
     use crate::services::messages::{
-        AddDishToOrder, ConfirmOrder, CreateOrder, DecrementDishInOrder, DeleteDishFromOrder,
-        FetchDish, GetOrder, PayForOrder,
+        AddDishToOrder, ConfirmOrder, CookOrder, CreateOrder, DecrementDishInOrder,
+        DeleteDishFromOrder, FetchDish, FetchOrder, FetchOrders, PayForOrder,
     };
     use actix_web::web::{Data, Path};
     use actix_web::{delete, get, post, put, HttpResponse, Responder};
     use serde::de::IntoDeserializer;
 
-    #[get("/{order_id}")]
+    #[get("/get/{order_id}")]
     pub async fn get_ordered_dishes(state: Data<AppState>, path: Path<i64>) -> impl Responder {
         let order_id = path.into_inner();
 
-        match state.pg_db.send(GetOrder(order_id)).await {
-            Ok(Ok(dishes)) => HttpResponse::Ok().json(dishes),
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order was not found: {err}")),
+        match state.pg_db.send(FetchOrder(order_id)).await {
+            Ok(Ok(order)) => HttpResponse::Ok().json(order),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
+            Err(err) => {
+                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+            }
+        }
+    }
+
+    #[get("/all")]
+    pub async fn get_all_orders(state: Data<AppState>) -> impl Responder {
+        match state.pg_db.send(FetchOrders).await {
+            Ok(Ok(orders)) => HttpResponse::Ok().json(orders),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }
@@ -246,7 +257,7 @@ pub mod order_route {
 
         match state.pg_db.send(CreateOrder(table_id)).await {
             Ok(Ok(id)) => HttpResponse::Ok().json(id),
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Table was not found: {err}")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }
@@ -262,7 +273,52 @@ pub mod order_route {
 
         match state.pg_db.send(AddDishToOrder { order_id, dish_id }).await {
             Ok(Ok(id)) => HttpResponse::Ok().json(id),
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order was not found: {err}")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
+            Err(err) => {
+                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+            }
+        }
+    }
+
+    #[post("/{order_id}/confirm")]
+    pub async fn confirm_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let order_id = path.into_inner();
+
+        match state.pg_db.send(ConfirmOrder(order_id)).await {
+            Ok(Ok(_)) => HttpResponse::Ok().json(format!(
+                "Order with id {order_id} is successfully confirmed"
+            )),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
+            Err(err) => {
+                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+            }
+        }
+    }
+
+    #[post("/{order_id}/pay")]
+    pub async fn pay_for_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let order_id = path.into_inner();
+
+        match state.pg_db.send(PayForOrder(order_id)).await {
+            Ok(Ok(_)) => {
+                HttpResponse::Ok().json(format!("Order with id {order_id} is successfully paid"))
+            }
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
+            Err(err) => {
+                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
+            }
+        }
+    }
+
+    #[post("/{order_id}/mark-cooked")]
+    pub async fn cook_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
+        let order_id = path.into_inner();
+
+        match state.pg_db.send(CookOrder(order_id)).await {
+            Ok(Ok(_)) => {
+                HttpResponse::Ok().json(format!("Order with id {order_id} is successfully cooked"))
+            }
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }
@@ -270,7 +326,7 @@ pub mod order_route {
     }
 
     #[put("/{order_id}/decrement/{dish_id}")]
-    pub async fn decrement_dishes_from_order(
+    pub async fn decrement_dish_in_order(
         state: Data<AppState>,
         path: Path<(i64, i64)>,
     ) -> impl Responder {
@@ -282,9 +338,7 @@ pub mod order_route {
             .await
         {
             Ok(Ok(id)) => HttpResponse::Ok().json(id),
-            Ok(Err(err)) => {
-                HttpResponse::NotFound().json(format!("Order or dish were not found: {err}"))
-            }
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }
@@ -304,39 +358,7 @@ pub mod order_route {
             .await
         {
             Ok(Ok(id)) => HttpResponse::Ok().json(id),
-            Ok(Err(err)) => {
-                HttpResponse::NotFound().json(format!("Order or dish were not found: {err}"))
-            }
-            Err(err) => {
-                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
-            }
-        }
-    }
-
-    #[post("/{order_id}/confirm")]
-    pub async fn confirm_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
-        let order_id = path.into_inner();
-
-        match state.pg_db.send(ConfirmOrder(order_id)).await {
-            Ok(Ok(_)) => HttpResponse::Ok().json(format!(
-                "Order with id {order_id} is successfully confirmed"
-            )),
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order not found: {err}")),
-            Err(err) => {
-                HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
-            }
-        }
-    }
-
-    #[post("/{order_id}/pay")]
-    pub async fn pay_for_order(state: Data<AppState>, path: Path<i64>) -> impl Responder {
-        let order_id = path.into_inner();
-
-        match state.pg_db.send(PayForOrder(order_id)).await {
-            Ok(Ok(_)) => {
-                HttpResponse::Ok().json(format!("Order with id {order_id} is successfully paid"))
-            }
-            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Order not found: {err}")),
+            Ok(Err(err)) => HttpResponse::NotFound().json(format!("Error: {err}")),
             Err(err) => {
                 HttpResponse::InternalServerError().json(format!("Unable to perform action: {err}"))
             }

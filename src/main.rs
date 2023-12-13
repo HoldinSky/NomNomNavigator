@@ -69,12 +69,14 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/order")
-                    .service(services::order_route::create_blank_order)
                     .service(services::order_route::get_ordered_dishes)
+                    .service(services::order_route::get_all_orders)
+                    .service(services::order_route::create_blank_order)
                     .service(services::order_route::add_dish_to_order)
-                    .service(services::order_route::decrement_dishes_from_order)
+                    .service(services::order_route::decrement_dish_in_order)
                     .service(services::order_route::delete_dish_from_order)
                     .service(services::order_route::confirm_order)
+                    .service(services::order_route::cook_order)
                     .service(services::order_route::pay_for_order),
             )
             .service(web::scope("/dishes").service(services::dishes_route::create_dish))

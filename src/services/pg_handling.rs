@@ -1,24 +1,23 @@
-use crate::schema::dish_to_product::dsl::dish_to_product;
-use crate::schema::dishes::approx_cook_time_s;
+use super::messages::{
+    AddDishToOrder, AddWaiter, ConfirmOrder, CookOrder, CreateDish, CreateOrder,
+    DecrementDishInOrder, DeleteDishFromOrder, FetchDish, FetchDishIngredients, FetchDishes,
+    FetchOrder, FetchOrders, FetchSpecificDishes, FetchWaiters, PayForOrder,
+};
+use crate::schema::orders;
+use crate::services::db_models::{Dish, Order, Waiter};
+use crate::services::db_utils::PgActor;
+use crate::services::insertable::DishProductMapping;
+use crate::types::{DishType, DishWithCount, OrderInfo};
 use actix::Handler;
+use chrono::{Local, NaiveDateTime};
 use diesel::connection::SimpleConnection;
 use diesel::expression::AsExpression;
+use diesel::query_builder::AsChangeset;
 use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
     result::{DatabaseErrorKind, Error},
     EqAll, ExpressionMethods, Insertable, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
 };
-
-use crate::services::db_models::{Dish, Waiter};
-use crate::services::db_utils::PgActor;
-use crate::services::insertable::DishProductMapping;
-use crate::services::messages::{
-    AddDishToOrder, AddWaiter, ConfirmOrder, CreateDish, CreateOrder, DecrementDishInOrder,
-    DeleteDishFromOrder, FetchDish, FetchDishIngredients, FetchDishes, FetchSpecificDishes,
-    FetchWaiters, PayForOrder,
-};
-
-use super::messages::GetOrder;
 
 fn establish_connection(
     pool: &Pool<ConnectionManager<PgConnection>>,
@@ -70,7 +69,7 @@ impl Handler<AddWaiter> for PgActor {
 
     fn handle(&mut self, msg: AddWaiter, _ctx: &mut Self::Context) -> Self::Result {
         use crate::schema::waiters::dsl::waiters;
-        use crate::schema::waiters::{first_name, id, is_admin, last_name};
+        use crate::schema::waiters::{first_name, id, last_name};
         use crate::services::insertable::NewWaiter;
 
         let mut conn = establish_connection(&self.0)?;
@@ -79,9 +78,7 @@ impl Handler<AddWaiter> for PgActor {
             .values(NewWaiter {
                 first_name: msg.first_name,
                 last_name: msg.last_name,
-                is_admin: msg.is_admin,
             })
-            .returning((id, first_name, last_name, is_admin))
             .execute(&mut conn)?;
 
         Ok(())
@@ -92,6 +89,7 @@ impl Handler<CreateDish> for PgActor {
     type Result = QueryResult<Dish>;
 
     fn handle(&mut self, msg: CreateDish, _ctx: &mut Self::Context) -> Self::Result {
+        use crate::schema::dish_to_product::dsl::dish_to_product;
         use crate::schema::dishes::{
             approx_cook_time_s, dsl::dishes, id, name, portion_weight_g, price, type_,
         };
@@ -187,6 +185,7 @@ impl Handler<CreateOrder> for PgActor {
         use crate::schema::dish_to_order::dsl::dish_to_order;
         use crate::schema::orders::{dsl::orders, id};
         use crate::services::insertable::{NewOrder, OrderDish};
+        use chrono::Local;
 
         let mut conn = establish_connection(&self.0)?;
 
@@ -194,51 +193,123 @@ impl Handler<CreateOrder> for PgActor {
             .values(NewOrder {
                 table_id: msg.0,
                 total_cost: 0,
+                created_at: Local::now().naive_local(),
             })
             .returning(id)
             .get_result::<i64>(&mut conn)
     }
 }
 
-impl Handler<GetOrder> for PgActor {
-    type Result = QueryResult<Vec<(Dish, i32)>>;
+impl Handler<FetchOrder> for PgActor {
+    type Result = QueryResult<OrderInfo>;
 
-    fn handle(&mut self, msg: GetOrder, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: FetchOrder, _ctx: &mut Self::Context) -> Self::Result {
         use crate::schema::dish_to_order::{count, dish_id, dsl::dish_to_order, order_id};
         use crate::schema::dishes::{
-            dsl::dishes, id as dish_pk, name, portion_weight_g, price, type_,
+            approx_cook_time_s, dsl::dishes, id as dish_pk, name, portion_weight_g, price, type_,
         };
         use crate::schema::orders::{dsl::orders, id as order_pk};
 
         let mut conn = establish_connection(&self.0)?;
 
-        let query_res: Vec<Dish> = dish_to_order
-            .filter(order_id.eq(msg.0))
-            .inner_join(dishes)
-            .select((
-                dish_pk,
-                name,
-                type_,
-                portion_weight_g,
-                price,
-                approx_cook_time_s,
-            ))
-            .filter(dish_pk.eq(dish_id))
-            .get_results::<Dish>(&mut conn)?;
-
         conn.build_transaction().run(|trx_conn| {
-            let mut to_return = vec![];
-            for ele in query_res {
+            let order = orders.find(msg.0).get_result::<Order>(trx_conn)?;
+
+            let dishes_in_order = dish_to_order
+                .filter(order_id.eq(msg.0))
+                .inner_join(dishes)
+                .select((
+                    dish_pk,
+                    name,
+                    type_,
+                    portion_weight_g,
+                    price,
+                    approx_cook_time_s,
+                ))
+                .filter(dish_pk.eq(dish_id))
+                .get_results::<Dish>(trx_conn)?;
+
+            let mut dish_array = vec![];
+
+            for dish in dishes_in_order {
                 let dish_count = dish_to_order
-                    .filter(dish_id.eq(ele.id))
-                    .filter(order_id.eq(msg.0))
+                    .filter(order_id.eq(order.id))
+                    .filter(dish_id.eq(dish.id))
                     .select(count)
                     .first::<i32>(trx_conn)?;
 
-                to_return.push((ele, dish_count));
+                dish_array.push(DishWithCount {
+                    dish,
+                    count: dish_count,
+                });
             }
 
-            Ok(to_return)
+            Ok(OrderInfo {
+                order,
+                dishes: dish_array,
+            })
+        })
+    }
+}
+
+impl Handler<FetchOrders> for PgActor {
+    type Result = QueryResult<Vec<OrderInfo>>;
+
+    fn handle(&mut self, msg: FetchOrders, _ctx: &mut Self::Context) -> Self::Result {
+        use super::db_models::Order;
+        use crate::schema::dish_to_order::{count, dish_id, dsl::dish_to_order, order_id};
+        use crate::schema::dishes::{
+            approx_cook_time_s, dsl::dishes, id as dish_pk, name, portion_weight_g, price, type_,
+        };
+        use crate::schema::orders::{
+            confirmed_at, cooked_at, created_at, dsl::orders, id as order_pk, is_confirmed,
+            is_cooked, is_paid, table_id, total_cost,
+        };
+
+        let mut conn = establish_connection(&self.0)?;
+
+        conn.build_transaction().run(|trx_conn| {
+            let all_orders = orders.get_results::<Order>(trx_conn)?;
+
+            let mut order_infos = vec![];
+
+            for ord in all_orders {
+                let mut dishes_of_order = dish_to_order
+                    .inner_join(dishes)
+                    .filter(order_id.eq(ord.id))
+                    .select((
+                        dish_pk,
+                        name,
+                        type_,
+                        portion_weight_g,
+                        price,
+                        approx_cook_time_s,
+                        count,
+                    ))
+                    .get_results::<(i64, String, DishType, i32, i32, i32, i32)>(trx_conn)?;
+
+                let dishes_of_order = dishes_of_order
+                    .iter_mut()
+                    .map(|data| DishWithCount {
+                        dish: Dish {
+                            id: data.0,
+                            name: data.1.clone(),
+                            type_: data.2.clone(),
+                            portion_weight_g: data.3,
+                            price: data.4,
+                            approx_cook_time_s: data.5,
+                        },
+                        count: data.6,
+                    })
+                    .collect();
+
+                order_infos.push(OrderInfo {
+                    order: ord,
+                    dishes: dishes_of_order,
+                })
+            }
+
+            Ok(order_infos)
         })
     }
 }
@@ -275,14 +346,11 @@ impl Handler<AddDishToOrder> for PgActor {
         };
 
         conn.build_transaction().run(|trx_conn| {
-            let dish_price = get_dish_price(trx_conn, msg.dish_id)?;
-
             diesel::insert_into(dish_to_order)
                 .values(OrderDish {
                     dish_id: msg.dish_id,
                     order_id: msg.order_id,
                     count: 1,
-                    dish_price,
                 })
                 .execute(trx_conn)?;
 
@@ -369,6 +437,13 @@ impl Handler<DeleteDishFromOrder> for PgActor {
     }
 }
 
+#[derive(AsChangeset)]
+#[diesel(table_name = orders)]
+struct ConfirmOrderChangeSet {
+    pub is_confirmed: bool,
+    pub confirmed_at: NaiveDateTime,
+}
+
 impl Handler<ConfirmOrder> for PgActor {
     type Result = QueryResult<()>;
 
@@ -430,11 +505,53 @@ impl Handler<ConfirmOrder> for PgActor {
             }
 
             diesel::update(orders.find(msg.0))
-                .set(is_confirmed.eq(true))
+                .set(ConfirmOrderChangeSet {
+                    is_confirmed: true,
+                    confirmed_at: Local::now().naive_local(),
+                })
                 .execute(trx_conn)?;
 
             Ok(())
         })
+    }
+}
+
+#[derive(AsChangeset)]
+#[diesel(table_name = orders)]
+struct CookOrderChangeSet {
+    pub is_cooked: bool,
+    pub cooked_at: NaiveDateTime,
+}
+
+impl Handler<CookOrder> for PgActor {
+    type Result = QueryResult<()>;
+
+    fn handle(&mut self, msg: CookOrder, _ctx: &mut Self::Context) -> Self::Result {
+        use crate::schema::orders::{cooked_at, dsl::orders, is_confirmed, is_cooked};
+
+        let mut conn = establish_connection(&self.0)?;
+
+        match orders
+            .find(msg.0)
+            .select(is_confirmed)
+            .first::<bool>(&mut conn)
+        {
+            Ok(val) => {
+                if !val {
+                    return Err(get_db_err("The order is not confirmed yet"));
+                }
+            }
+            Err(err) => return Err(err),
+        };
+
+        diesel::update(orders.find(msg.0))
+            .set(CookOrderChangeSet {
+                is_cooked: true,
+                cooked_at: Local::now().naive_local(),
+            })
+            .execute(&mut conn)?;
+
+        Ok(())
     }
 }
 
